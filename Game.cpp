@@ -1,5 +1,5 @@
 #include "Game.hpp"
-
+//TODO
 void Game::update(float time) {
 	ball += ball_velocity * time;
 	if (ball.x >= 0.5f * FrameWidth - BallRadius) {

@@ -5,12 +5,13 @@
 #include <set>
 #include <chrono>
 
+//TODO
 int main(int argc, char **argv) {
 	if (argc != 2) {
 		std::cerr << "Usage:\n\t./server <port>" << std::endl;
 		return 1;
 	}
-	
+
 	Server server(argv[1]);
 
 	Game state;
