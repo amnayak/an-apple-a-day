@@ -1,11 +1,10 @@
 # Game Information
-(Note: fill in this portion with information about your game.)
 
-Title: (TODO: your game's title)
+Title: An Apple a Day
 
-Author: (TODO: your name)
+Author: Amukta Nayak
 
-Design Document: [TODO: name of design document](TODO: link to design document)
+Design Document: [An Apple a Day](http://graphics.cs.cmu.edu/courses/15-466-f18/game2-designs/apnayak/)
 
 Screen Shot:
 
@@ -13,15 +12,18 @@ Screen Shot:
 
 How To Play:
 
-TODO: describe the controls and (if needed) goals/strategy.
+Multiplayer snake. Use WASD or LRUD to control your snake. Collect apples to grow and be the last snake remaining. Snakes are defeated when they hit walls, other snakes, or themselves.
 
 Changes From The Design Document:
 
-TODO: what did you need to add/remove/modify from the original design? Why?
+I limited the snake size to 14, because after a certain point having two snakes that grow infinitely feels crowded and limiting. This also encourages more clever strategy with blocking apples and trapping your opponent-- you can't just do it with sheer size anymore.
 
 Good / Bad / Ugly Code:
 
-TODO: provide examples of code you wrote from this project that you think is good (elegant, simple, useful), bad (hack-y, brittle, unreadable), and ugly (particularly inelegant). Provide a sentence or two of justification for the examples.
+The code is overall very ugly. The worst code has to be in Game.hpp, particularly the structs that I use to serialize/deserialize data. They're very redundant-- the Game struct is almost exactly the ServerState struct. Due to this, the clients also end up sending large amounts of unnecessary data. In the future, I'd plan it out better.
+
+Another bad thing is that I could not get the text to render so I'm just having the console announce the winner when the game ends.
+
 
 # Using This Base Code
 
