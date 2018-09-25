@@ -18,6 +18,7 @@
 #include <map>
 #include <cstddef>
 #include <random>
+#include <string>
 
 
 Load< MeshBuffer > meshes(LoadTagDefault, [](){
@@ -28,8 +29,10 @@ Load< GLuint > meshes_for_vertex_color_program(LoadTagDefault, [](){
 	return new GLuint(meshes->make_vao_for_program(vertex_color_program->program));
 });
 
-Scene::Transform *paddle_transform = nullptr;
-Scene::Transform *ball_transform = nullptr;
+
+Scene::Transform *apple_transforms [MAX_NUM_APPLES];
+Scene::Transform *snake1_transforms [MAX_SNAKE_SIZE];
+Scene::Transform *snake2_transforms [MAX_SNAKE_SIZE];
 
 Scene::Camera *camera = nullptr;
 
@@ -52,12 +55,25 @@ Load< Scene > scene(LoadTagDefault, [](){
 
 	//look up paddle and ball transforms:
 	for (Scene::Transform *t = ret->first_transform; t != nullptr; t = t->alloc_next) {
-		if (t->name == "Ball1") {
-			if (ball_transform) throw std::runtime_error("Multiple 'Ball' transforms in scene.");
-			ball_transform = t;
+		for(uint32_t i = 0; i<MAX_NUM_APPLES; i++) {
+			std::string name = "Apple" + std::to_string(i + 1);
+			if (t->name == name) {
+				apple_transforms[i] = t;
+			}
+		}
+		for(uint32_t i = 0; i<MAX_SNAKE_SIZE; i++) {
+			std::string name = "Ball1.00" + std::to_string(i);
+			if (t->name == name) {
+				snake1_transforms[i] = t;
+			}
+		}
+		for(uint32_t i = 0; i<MAX_SNAKE_SIZE; i++) {
+			std::string name = "Ball2.00" + std::to_string(i);
+			if (t->name == name) {
+				snake2_transforms[i] = t;
+			}
 		}
 	}
-	if (!ball_transform) throw std::runtime_error("No 'Ball' transform in scene.");
 
 	//look up the camera:
 	for (Scene::Camera *c = ret->first_camera; c != nullptr; c = c->alloc_next) {
@@ -72,6 +88,8 @@ Load< Scene > scene(LoadTagDefault, [](){
 
 GameMode::GameMode(Client &client_) : client(client_) {
 	client.connection.send_raw("h", 1); //send a 'hello' to the server
+	state.snake1.push_back(glm::vec2(1.0f, 1.0f));
+	state.snake2.push_back(glm::vec2(19.0f, 15.0f));
 }
 
 GameMode::~GameMode() {
@@ -79,9 +97,7 @@ GameMode::~GameMode() {
 
 bool GameMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
 	//ignore any keys that are the result of automatic key repeat:
-	if (evt.type == SDL_KEYDOWN && evt.key.repeat) {
-		return false;
-	}
+
 	if (evt.type == SDL_KEYDOWN) {
 		if (evt.key.keysym.scancode == SDL_SCANCODE_W || evt.key.keysym.scancode == SDL_SCANCODE_UP) {
 				if (state.id % 2 == 0 && state.snake1_direction != DOWN) { //if you're player 1
@@ -120,52 +136,37 @@ bool GameMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 void GameMode::update(float elapsed) {
 	if (state.gameOver && state.playerOne) {
 		std::string message = "PLAYER ONE WINS";
-		/**
-		float height = 0.06f;
-		float width = text_width(message, height);
-		draw_text(message, glm::vec2(-0.5f * width,-0.99f), height, glm::vec4(0.0f, 0.0f, 0.0f, 0.5f));
-		draw_text(message, glm::vec2(-0.5f * width,-1.0f), height, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+		std::cout << message << std::endl;
 
-		glUseProgram(0);
-		**/
 		return;
 	} else if (state.gameOver && !state.playerOne) {
 		std::string message = "PLAYER TWO WINS";
-		/**
-		float height = 0.06f;
-		float width = text_width(message, height);
-		draw_text(message, glm::vec2(-0.5f * width,-0.99f), height, glm::vec4(0.0f, 0.0f, 0.0f, 0.5f));
-		draw_text(message, glm::vec2(-0.5f * width,-1.0f), height, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+		std::cout << message << std::endl;
 
-		glUseProgram(0);
-		**/
 		return;
 	}
 
 	 else {
-		if (state.gameStarted) { //update only if game started
-			std::cout << "1" << std::endl;
+		if (state.gameStarted && !state.gameOver) { //update only if game started
 			state.update(elapsed);
 		}
 
 		if (client.connection) {
-			std::cout << "2" << std::endl;
 			//send game state to server
 			ServerState temp_serverstate{};
 			temp_serverstate.snake1 = state.snake1;
 			temp_serverstate.snake2 = state.snake2;
+			assert(temp_serverstate.snake1.size() > 0);
+			assert(state.snake2.size() > 0);
 			temp_serverstate.snake1_direction = state.snake1_direction;
 			temp_serverstate.snake2_direction = state.snake2_direction;
 			temp_serverstate.apples = state.apples;
 			temp_serverstate.gameOver = state.gameOver;
 			temp_serverstate.playerOne  = state.playerOne;
-			std::cout << "3" << std::endl;
 			SerializedState temp_serial{};
 			state_to_serialized(&temp_serverstate, &temp_serial, state.id, true);
-			std::cout << "4" << std::endl;
 			client.connection.send_raw("s", 1);
 			client.connection.send_raw(&temp_serial, sizeof(SerializedState));
-			std::cout << "5" << std::endl;
 		}
 
 		//get state
@@ -175,33 +176,38 @@ void GameMode::update(float elapsed) {
 			} else if (event == Connection::OnClose) {
 				std::cerr << "Lost connection to server." << std::endl;
 			} else { assert(event == Connection::OnRecv); //Recieve bytes from server
-				std::cout << "6" << std::endl;
 				if (c->recv_buffer[0] == 's') {
 					if (c->recv_buffer.size() < 1 + sizeof(SerializedState)) {
 						return; //wait for more data
 					} else {
-						std::cout << "7" << std::endl;
 						SerializedState temp_ss{};
-						std::cout << "from outside" << &temp_ss << std::endl;
 						ServerState temp_serverstate{};
+						temp_serverstate.snake1.push_back(glm::vec2(1.0f, 1.0f));
+						temp_serverstate.snake2.push_back(glm::vec2(19.0f, 15.0f));
 						memcpy(&temp_ss, c->recv_buffer.data() + 1, sizeof(SerializedState));
 						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 1 +sizeof(SerializedState));
-						std::cout << "8" << std::endl;
 						state.id = serialized_to_state(&temp_ss, &temp_serverstate, true, -5);
-						std::cout << "8.5" << std::endl;
 						//Save state you recieved
 						state.apples = temp_serverstate.apples;
 						state.gameOver = temp_serverstate.gameOver;
 						state.playerOne = temp_serverstate.playerOne;
-						std::cout << "9" << std::endl;
+						state.gameStarted = temp_serverstate.gameStarted;
+						state.snake1.clear();
+						for(glm::vec2 elem : temp_serverstate.snake1) {
+							state.snake1.push_back(elem);
+						}
+						state.snake2.clear();
+						for(glm::vec2 elem : temp_serverstate.snake2) {
+							state.snake2.push_back(elem);
+						}
+						assert(temp_serverstate.snake1.size() > 0);
+						assert(state.snake2.size() > 0);
+						//std::cout << "cli2" << std::endl;
 						if (state.id % 2 == 0) { //if you're player one
-							state.snake2 = temp_serverstate.snake2;
 							state.snake2_direction = temp_serverstate.snake2_direction;
 						} else {
-							state.snake1 = temp_serverstate.snake1;
 							state.snake1_direction = temp_serverstate.snake1_direction;
 						}
-						std::cout << "10" << std::endl;
 
 					}
 
@@ -212,13 +218,32 @@ void GameMode::update(float elapsed) {
 
 //TODO render new balls somehow && case for snake
 	//copy game state to scene positions:
-	/**
-	ball_transform->position.x = state.ball.x;
-	ball_transform->position.y = state.ball.y;
+	assert(state.snake1.size() > 0);
+	assert(state.snake2.size() > 0);
 
-	paddle_transform->position.x = state.paddle.x;
-	paddle_transform->position.y = state.paddle.y;
-	**/
+	uint32_t i = 0;
+
+	for (glm::vec2 apple_loc : state.apples) {
+		apple_transforms[i]->position.x = (apple_loc.x/2.0f) - 5.0f;
+		apple_transforms[i]->position.y = (apple_loc.y/2.0f) - 4.0f;
+		i++;
+	}
+	i = 0;
+	for (glm::vec2 ball_loc : state.snake1) {
+		snake1_transforms[i]->position.x = (ball_loc.x/2.0f) - 5.0f;
+		snake1_transforms[i]->position.y = (ball_loc.y/2.0f) - 4.0f;
+		i++;
+	}
+	i = 0;
+	for (glm::vec2 ball_loc : state.snake2) {
+		snake2_transforms[i]->position.x = (ball_loc.x/2.0f) - 5.0f;
+		snake2_transforms[i]->position.y = (ball_loc.y/2.0f) - 4.0f;
+		i++;
+	}
+
+	assert(i <= 5);
+
+
 }
 
 void GameMode::draw(glm::uvec2 const &drawable_size) {
@@ -240,6 +265,7 @@ void GameMode::draw(glm::uvec2 const &drawable_size) {
 	glUniform3fv(vertex_color_program->sky_direction_vec3, 1, glm::value_ptr(glm::vec3(0.0f, 1.0f, 0.0f)));
 
 	scene->draw(camera);
+
 
 	GL_ERRORS();
 }
