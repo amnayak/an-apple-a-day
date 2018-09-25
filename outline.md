@@ -54,17 +54,16 @@ WASD/LRUD
 
 **CLIENT CODE**
 
-- receive Snake vectors for both players
-- receive Apple vector
-- receive game over/ game winner
-- render graphics
-- process and send keyboard hits
+- client is in charge of:
+  - it's own snake position and broadcasting it
+  - stores the other snake position as well
 
 **SERVER CODE**
 
-- receive key strokes
-- update data structures
-- send back snake, apple, and game over info
+- server is in charge of:
+  - receiving both snake positions and sending it to other player
+  - generating apple locations and giving it to both players
+  - generating win/loss conditions and giving it to both players
 
 **ASSETS**
 
@@ -72,3 +71,14 @@ WASD/LRUD
 - for now, snakes and apples are balls
 - if there's time, color 'em
 - if there's even more time insert an apple mesh and snake meshes
+
+**SERVER-CLIENT COMMUNICATION**
+
+1) Server starts up, waits for clients
+2) When a client connects, receive 'h', send back client ID
+3) If an odd-numbered client (Player 2) connects, send "gameStarted" message to both clients
+4) On receiving SerializedData from client, send back updated SerializedData to client
+
+1) When client starts up, send 'h', receive ID
+2) Wait until gameStarted == true
+3) On sending SerializedData to server, receive data from server

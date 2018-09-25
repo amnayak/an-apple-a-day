@@ -52,16 +52,11 @@ Load< Scene > scene(LoadTagDefault, [](){
 
 	//look up paddle and ball transforms:
 	for (Scene::Transform *t = ret->first_transform; t != nullptr; t = t->alloc_next) {
-		if (t->name == "Paddle") {
-			if (paddle_transform) throw std::runtime_error("Multiple 'Paddle' transforms in scene.");
-			paddle_transform = t;
-		}
-		if (t->name == "Ball") {
+		if (t->name == "Ball1") {
 			if (ball_transform) throw std::runtime_error("Multiple 'Ball' transforms in scene.");
 			ball_transform = t;
 		}
 	}
-	if (!paddle_transform) throw std::runtime_error("No 'Paddle' transform in scene.");
 	if (!ball_transform) throw std::runtime_error("No 'Ball' transform in scene.");
 
 	//look up the camera:
@@ -87,42 +82,143 @@ bool GameMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 	if (evt.type == SDL_KEYDOWN && evt.key.repeat) {
 		return false;
 	}
-
-	if (evt.type == SDL_MOUSEMOTION) {
-		state.paddle.x = (evt.motion.x - 0.5f * window_size.x) / (0.5f * window_size.x) * Game::FrameWidth;
-		state.paddle.x = std::max(state.paddle.x, -0.5f * Game::FrameWidth + 0.5f * Game::PaddleWidth);
-		state.paddle.x = std::min(state.paddle.x,  0.5f * Game::FrameWidth - 0.5f * Game::PaddleWidth);
+	if (evt.type == SDL_KEYDOWN) {
+		if (evt.key.keysym.scancode == SDL_SCANCODE_W || evt.key.keysym.scancode == SDL_SCANCODE_UP) {
+				if (state.id % 2 == 0 && state.snake1_direction != DOWN) { //if you're player 1
+					state.snake1_direction = UP;
+				} else if (state.id % 2 == 1 && state.snake1_direction != DOWN) {
+					state.snake2_direction = UP;
+				}
+				return true;
+		} else if (evt.key.keysym.scancode == SDL_SCANCODE_S || evt.key.keysym.scancode == SDL_SCANCODE_DOWN) {
+				if (state.id % 2 == 0 && state.snake1_direction != UP) { //if you're player 1
+					state.snake1_direction = DOWN;
+				} else if (state.id % 2 == 1 && state.snake1_direction != UP) {
+					state.snake2_direction = DOWN;
+				}
+				return true;
+		} else if (evt.key.keysym.scancode == SDL_SCANCODE_A || evt.key.keysym.scancode == SDL_SCANCODE_LEFT) {
+				if (state.id % 2 == 0 && state.snake1_direction != RIGHT) { //if you're player 1
+					state.snake1_direction = LEFT;
+				} else if (state.id % 2 == 1 && state.snake1_direction != RIGHT) {
+					state.snake2_direction = LEFT;
+				}
+				return true;
+		} else if (evt.key.keysym.scancode == SDL_SCANCODE_D || evt.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
+				if (state.id % 2 == 0 && state.snake1_direction != LEFT) { //if you're player 1
+					state.snake1_direction = RIGHT;
+				} else if (state.id % 2 == 1 && state.snake1_direction != LEFT) {
+					state.snake2_direction = RIGHT;
+				}
+				return true;
+		}
 	}
 
 	return false;
 }
 
 void GameMode::update(float elapsed) {
-	state.update(elapsed);
+	if (state.gameOver && state.playerOne) {
+		std::string message = "PLAYER ONE WINS";
+		/**
+		float height = 0.06f;
+		float width = text_width(message, height);
+		draw_text(message, glm::vec2(-0.5f * width,-0.99f), height, glm::vec4(0.0f, 0.0f, 0.0f, 0.5f));
+		draw_text(message, glm::vec2(-0.5f * width,-1.0f), height, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
 
-	if (client.connection) {
-		//send game state to server:
-		client.connection.send_raw("s", 1);
-		client.connection.send_raw(&state.paddle.x, sizeof(float));
+		glUseProgram(0);
+		**/
+		return;
+	} else if (state.gameOver && !state.playerOne) {
+		std::string message = "PLAYER TWO WINS";
+		/**
+		float height = 0.06f;
+		float width = text_width(message, height);
+		draw_text(message, glm::vec2(-0.5f * width,-0.99f), height, glm::vec4(0.0f, 0.0f, 0.0f, 0.5f));
+		draw_text(message, glm::vec2(-0.5f * width,-1.0f), height, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+
+		glUseProgram(0);
+		**/
+		return;
 	}
 
-	client.poll([&](Connection *c, Connection::Event event){
-		if (event == Connection::OnOpen) {
-			//probably won't get this.
-		} else if (event == Connection::OnClose) {
-			std::cerr << "Lost connection to server." << std::endl;
-		} else { assert(event == Connection::OnRecv);
-			std::cerr << "Ignoring " << c->recv_buffer.size() << " bytes from server." << std::endl;
-			c->recv_buffer.clear();
+	 else {
+		if (state.gameStarted) { //update only if game started
+			std::cout << "1" << std::endl;
+			state.update(elapsed);
 		}
-	});
 
+		if (client.connection) {
+			std::cout << "2" << std::endl;
+			//send game state to server
+			ServerState temp_serverstate{};
+			temp_serverstate.snake1 = state.snake1;
+			temp_serverstate.snake2 = state.snake2;
+			temp_serverstate.snake1_direction = state.snake1_direction;
+			temp_serverstate.snake2_direction = state.snake2_direction;
+			temp_serverstate.apples = state.apples;
+			temp_serverstate.gameOver = state.gameOver;
+			temp_serverstate.playerOne  = state.playerOne;
+			std::cout << "3" << std::endl;
+			SerializedState temp_serial{};
+			state_to_serialized(&temp_serverstate, &temp_serial, state.id, true);
+			std::cout << "4" << std::endl;
+			client.connection.send_raw("s", 1);
+			client.connection.send_raw(&temp_serial, sizeof(SerializedState));
+			std::cout << "5" << std::endl;
+		}
+
+		//get state
+		client.poll([&](Connection *c, Connection::Event event){
+			if (event == Connection::OnOpen) {
+				//probably won't get this.
+			} else if (event == Connection::OnClose) {
+				std::cerr << "Lost connection to server." << std::endl;
+			} else { assert(event == Connection::OnRecv); //Recieve bytes from server
+				std::cout << "6" << std::endl;
+				if (c->recv_buffer[0] == 's') {
+					if (c->recv_buffer.size() < 1 + sizeof(SerializedState)) {
+						return; //wait for more data
+					} else {
+						std::cout << "7" << std::endl;
+						SerializedState temp_ss{};
+						std::cout << "from outside" << &temp_ss << std::endl;
+						ServerState temp_serverstate{};
+						memcpy(&temp_ss, c->recv_buffer.data() + 1, sizeof(SerializedState));
+						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 1 +sizeof(SerializedState));
+						std::cout << "8" << std::endl;
+						state.id = serialized_to_state(&temp_ss, &temp_serverstate, true, -5);
+						std::cout << "8.5" << std::endl;
+						//Save state you recieved
+						state.apples = temp_serverstate.apples;
+						state.gameOver = temp_serverstate.gameOver;
+						state.playerOne = temp_serverstate.playerOne;
+						std::cout << "9" << std::endl;
+						if (state.id % 2 == 0) { //if you're player one
+							state.snake2 = temp_serverstate.snake2;
+							state.snake2_direction = temp_serverstate.snake2_direction;
+						} else {
+							state.snake1 = temp_serverstate.snake1;
+							state.snake1_direction = temp_serverstate.snake1_direction;
+						}
+						std::cout << "10" << std::endl;
+
+					}
+
+				}
+			}
+	});
+}
+
+//TODO render new balls somehow && case for snake
 	//copy game state to scene positions:
+	/**
 	ball_transform->position.x = state.ball.x;
 	ball_transform->position.y = state.ball.y;
 
 	paddle_transform->position.x = state.paddle.x;
 	paddle_transform->position.y = state.paddle.y;
+	**/
 }
 
 void GameMode::draw(glm::uvec2 const &drawable_size) {
@@ -130,7 +226,6 @@ void GameMode::draw(glm::uvec2 const &drawable_size) {
 
 	glClearColor(0.25f, 0.0f, 0.5f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 	//set up basic OpenGL state:
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_BLEND);
@@ -139,7 +234,6 @@ void GameMode::draw(glm::uvec2 const &drawable_size) {
 
 	//set up light positions:
 	glUseProgram(vertex_color_program->program);
-
 	glUniform3fv(vertex_color_program->sun_color_vec3, 1, glm::value_ptr(glm::vec3(0.81f, 0.81f, 0.76f)));
 	glUniform3fv(vertex_color_program->sun_direction_vec3, 1, glm::value_ptr(glm::normalize(glm::vec3(-0.2f, 0.2f, 1.0f))));
 	glUniform3fv(vertex_color_program->sky_color_vec3, 1, glm::value_ptr(glm::vec3(0.2f, 0.2f, 0.3f)));
